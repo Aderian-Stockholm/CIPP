@@ -1,0 +1,69 @@
+# =========================================================================
+# Deploys the CIPP frontend to Azure Static Web App 'cipp-swa-bnhju'.
+#
+# Place this file in the Aderian-Stockholm/CIPP fork as:
+#   .github/workflows/azure-static-web-apps-cipp-swa-bnhju.yml
+#
+# Required repository secret (already present, created by Azure at setup):
+#   AZURE_STATIC_WEB_APPS_API_TOKEN_PURPLE_OCEAN_09BC40F03
+#   If the deploy step returns 401, refresh its value from
+#   Azure Portal > Static Web App 'cipp-swa-bnhju' > Manage deployment token
+#
+# The build steps mirror upstream's cipp_frontend_build.yml. The app is built
+# here rather than by Oryx because 'npm run build' deletes package.json and
+# yarn.lock on purpose, which breaks any downstream build attempt.
+# =========================================================================
+name: Azure Static Web Apps CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    name: Build and Deploy CIPP Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Node version
+        id: get_node_version
+        run: |
+          node_raw_version=$(node -p "require('./package.json').engines.node")
+          node_sanitized_version=$(echo $node_raw_version | sed -E 's/[^0-9.]+//g')
+          echo "node_version=$node_sanitized_version" >> $GITHUB_OUTPUT
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.get_node_version.outputs.node_version }}
+
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build Project
+        run: npm run build
+
+      - name: Stamp version.json with commit hash
+        run: |
+          VERSION=$(jq -r '.version' public/version.json)
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "{\"version\": \"${VERSION}\", \"commit\": \"${SHORT_SHA}\"}" > out/version.json
+
+      - name: Copy Static Web App config into build output
+        run: cp staticwebapp.config.json out/
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PURPLE_OCEAN_09BC40F03 }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: 'out'
+          api_location: ''
+          output_location: ''
+          skip_app_build: true
+          skip_api_build: true
